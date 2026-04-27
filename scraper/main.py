@@ -6,14 +6,9 @@ from sqlalchemy import create_engine
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-
-# Import your new custom logger
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
-
 DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
 
@@ -23,60 +18,74 @@ def get_driver():
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     return webdriver.Chrome(options=options)
 
-def scrape_avito_real_estate():
+def scrape_avito_real_estate(max_pages=3000): # High limit to get all 107k ads
     driver = None
     try:
-        logger.info("Starting Scraper...")
+        logger.info("🚀 Starting THE ULTIMATE SCRAPER...")
         driver = get_driver()
-        url = "https://www.avito.ma/fr/maroc/immobilier-%C3%A0_vendre"
         
-        driver.get(url)
-        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "main")))
-        
-        driver.execute_script("window.scrollTo(0, 1000);")
-        time.sleep(5)
-
-        listing_cards = driver.find_elements(By.CSS_SELECTOR, "a, article, div[class*='listingCard']")
-        logger.info(f"Found {len(listing_cards)} elements on the page.")
-        
-        scraped_data = []
-        for card in listing_cards:
-            val = card.text
-            if val and "DH" in val and len(val) > 20:
-                # Cleaning the text
-                lines = [l.strip() for l in val.split('\n') if l.strip()]
+        for page in range(1, max_pages + 1):
+            url = f"https://www.avito.ma/fr/maroc/immobilier-%C3%A0_vendre?p={page}"
+            logger.info(f"🔎 Scraping Page {page}...")
+            driver.get(url)
+            time.sleep(3) # Wait for initial load
+            
+            page_listings = {} # Use a dictionary to prevent saving duplicates
+            
+            # SLOW SCROLL: Scroll 15 times in small increments
+            for _ in range(15): 
+                driver.execute_script("window.scrollBy(0, 600);")
+                time.sleep(1) # Let the lazy-loaded cards pop into existence
                 
-                # Logic to pull specific numbers from the text
-                surface_match = re.search(r'(\d+)\s*m²', val)
-                rooms_match = re.search(r'(\d+)\s*chambre', val)
-                bath_match = re.search(r'(\d+)\s*sdb', val)
+                # Target the <a> tags to get the direct link
+                cards = driver.find_elements(By.CSS_SELECTOR, "a[href*='.ma/']")
+                
+                for card in cards:
+                    try:
+                        href = card.get_attribute("href")
+                        val = card.text
+                        
+                        # Only process if it has text and we haven't seen this exact link yet
+                        if val and len(val) > 10 and href not in page_listings:
+                            lines = [l.strip() for l in val.split('\n') if l.strip()]
+                            
+                            surface_match = re.search(r'(\d+)\s*m²', val)
+                            rooms_match = re.search(r'(\d+)\s*chambre', val)
+                            bath_match = re.search(r'(\d+)\s*sdb', val)
+                            floor_match = re.search(r'Étage\s*(\d+|RDC)', val, re.IGNORECASE)
+                            year_match = re.search(r'(19\d{2}|20\d{2})', val) 
+                            
+                            page_listings[href] = {
+                                "title": lines[0] if lines else "N/A",
+                                "price": next((l for l in lines if "DH" in l), "N/A"),
+                                "city": next((l for l in lines if "dans " in l), "N/A"),
+                                "surface": surface_match.group(1) if surface_match else "N/A",
+                                "rooms": rooms_match.group(1) if rooms_match else "N/A",
+                                "bathrooms": bath_match.group(1) if bath_match else "N/A",
+                                "floor": floor_match.group(1) if floor_match else "N/A",
+                                "build_year": year_match.group(1) if year_match else "N/A",
+                                "link": href,
+                                "details": val.replace('\n', ' ')[:500]
+                            }
+                    except Exception:
+                        # Ignore "StaleElementReferenceException" when Avito recycles code
+                        continue 
+                        
+            # If the page is completely empty, we reached the end of Avito
+            if not page_listings:
+                logger.warning(f"⚠️ Page {page} has no listings. Ending scrape.")
+                break
 
-                scraped_data.append({
-                    "title": lines[0],
-                    "price": next((l for l in lines if "DH" in l), "0 DH"),
-                    "city": next((l for l in lines if "dans " in l), "Unknown"),
-                    "surface": surface_match.group(1) if surface_match else "N/A",
-                    "rooms": rooms_match.group(1) if rooms_match else "N/A",
-                    "bathrooms": bath_match.group(1) if bath_match else "N/A",
-                    "details": val[:200].replace('\n', ' ')
-                })
-
-        df = pd.DataFrame(scraped_data).drop_duplicates()
-        
-        if not df.empty:
-            # We use 'staging' schema. Ensure you ran the ALTER TABLE command!
-            df.to_sql('raw_annonces', engine, schema='staging', if_exists='append', index=False)
-            logger.info(f"✅ SUCCESSFULLY saved {len(df)} listings to Database.")
-        else:
-            logger.warning("No valid listings found. Check error_view.png")
-            driver.save_screenshot("logs/error_view.png")
+            # Save to Database
+            df = pd.DataFrame(list(page_listings.values()))
+            if not df.empty:
+                df.to_sql('raw_annonces', engine, schema='staging', if_exists='append', index=False)
+                logger.info(f"✅ Page {page}: Saved {len(df)} listings.")
 
     except Exception as e:
-        logger.error(f"❌ CRITICAL ERROR: {str(e)}", exc_info=True)
-    
+        logger.error(f"❌ Error: {str(e)}")
     finally:
         if driver:
             driver.quit()
