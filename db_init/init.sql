@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS staging.raw_annonces (
     price TEXT,
     city TEXT,
     surface TEXT,
-    details JSONB,
-    scrape_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    rooms TEXT, 
+    bathrooms TEXT,
+    details TEXT,
+    scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
