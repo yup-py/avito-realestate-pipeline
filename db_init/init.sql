@@ -11,8 +11,14 @@ CREATE TABLE IF NOT EXISTS staging.raw_annonces (
     price TEXT,
     city TEXT,
     surface TEXT,
-    rooms TEXT, 
+    rooms TEXT,
     bathrooms TEXT,
-    details TEXT,
+    floor TEXT,
+    build_year TEXT,
+    link TEXT,
+    details TEXT,          -- Stores the full raw text for analysis
     scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 3. Create an index on the link to make searching faster later
+CREATE INDEX IF NOT EXISTS idx_annonce_link ON staging.raw_annonces(link);
