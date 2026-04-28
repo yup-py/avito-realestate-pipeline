@@ -14,7 +14,7 @@ services:
 
   pipeline:
     build: .
-    container_name: avito_pipeline
+    container_name: avito-realestate
     tty: true
     stdin_open: true
     depends_on:
