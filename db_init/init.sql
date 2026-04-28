@@ -7,6 +7,7 @@ CREATE SCHEMA IF NOT EXISTS ml_schema;   -- For Machine Learning (One Big Table)
 -- 2 Create the Staging Table (The first place data lands)
 CREATE TABLE IF NOT EXISTS staging.raw_annonces (
     id SERIAL PRIMARY KEY,
+    category TEXT,
     title TEXT,
     price TEXT,
     city TEXT,
