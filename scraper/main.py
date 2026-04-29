@@ -9,13 +9,14 @@ from selenium.webdriver.support import expected_conditions as EC
 
 # Import your custom tools
 from utils.logger import setup_logger
-from utils.helpers import get_driver, extract_listing_data
+from scraper.helpers import get_driver, extract_listing_data
 
 logger = setup_logger(__name__)
 DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
 
-def scrape_avito_real_estate(pages_per_category=10): 
+# UPDATED: Now it accepts the specific category chosen in your menu!
+def run_scraper(target_category, pages_per_category=10): 
     categories = {
         "Appartement": "https://www.avito.ma/fr/maroc/appartement",
         "Maison": "https://www.avito.ma/fr/maroc/maisons-%C3%A0_vendre",
@@ -26,60 +27,69 @@ def scrape_avito_real_estate(pages_per_category=10):
         "Autre": "https://www.avito.ma/fr/maroc/autres_immobilier-%C3%A0_vendre"
     }
 
+    # Failsafe: if the category doesn't exist, stop.
+    if target_category not in categories:
+        logger.error(f"Category {target_category} not found!")
+        return
+
     driver = None
     all_extracted_data = [] 
     
     try:
         driver = get_driver()
-        category_list = list(categories.keys())
-        random.shuffle(category_list)
+        base_url = categories[target_category]
+        logger.info(f"🚀 Scraping Category: {target_category}")
         
-        for category_name in category_list:
-            base_url = categories[category_name]
-            logger.info(f"🚀 Category: {category_name}")
+        for page in range(1, pages_per_category + 1):
+            url = f"{base_url}?p={page}"
+            logger.info(f"🔎 {target_category} - Page {page}...")
             
-            for page in range(1, pages_per_category + 1):
-                url = f"{base_url}?p={page}"
-                logger.info(f"🔎 {category_name} - Page {page}...")
-                
-                time.sleep(random.uniform(9.0, 15.0))
-                driver.get(url)
-                
+            # Anti-bot delay
+            time.sleep(random.uniform(9.0, 15.0))
+            driver.get(url)
+            
+            try:
+                WebDriverWait(driver, 25).until(EC.presence_of_element_located((By.CSS_SELECTOR, "a[href$='.htm']")))
+            except:
+                logger.warning(f"⚠️ Page {page} failed to load or no listings found. Stopping this category.")
+                break
+
+            cards = driver.find_elements(By.CSS_SELECTOR, "a[href$='.htm']")
+            page_data = [] 
+            
+            for card in cards:
                 try:
-                    WebDriverWait(driver, 25).until(EC.presence_of_element_located((By.CSS_SELECTOR, "a[href$='.htm']")))
-                except:
-                    logger.warning(f"⚠️ Page failed. Skipping category.")
-                    break
+                    href = card.get_attribute("href")
+                    text = card.text
+                    if text and len(text) > 10:
+                        # Sends the target_category so your BI data is tagged correctly!
+                        entry = extract_listing_data(text, href, target_category)
+                        page_data.append(entry)
+                        all_extracted_data.append(entry)
+                except: continue
 
-                cards = driver.find_elements(By.CSS_SELECTOR, "a[href$='.htm']")
-                page_data = [] 
+            # --- BUILD-UP SAVE ---
+            if page_data:
+                # Save only the NEW listings from this page to DB
+                pd.DataFrame(page_data).to_sql('raw_annonces', engine, schema='staging', if_exists='append', index=False)
                 
-                for card in cards:
-                    try:
-                        href = card.get_attribute("href")
-                        text = card.text
-                        if text and len(text) > 10:
-                            entry = extract_listing_data(text, href, category_name)
-                            page_data.append(entry)
-                            all_extracted_data.append(entry)
-                    except: continue
+                # FIX: Append to CSV instead of overwriting
+                file_path = 'data/rawdata.csv'
+                os.makedirs('data', exist_ok=True)
+                
+                # If file doesn't exist, write header; if it does, don't.
+                header = not os.path.exists(file_path)
+                pd.DataFrame(page_data).to_csv(file_path, mode='a', index=False, header=header)
+                
+                logger.info(f"💾 Page {page} secured. Total extracted for {target_category}: {len(all_extracted_data)}")
 
-                # --- BUILD-UP SAVE ---
-                if page_data:
-                    # Save only the NEW listings from this page to DB
-                    pd.DataFrame(page_data).to_sql('raw_annonces', engine, schema='staging', if_exists='append', index=False)
-                    
-                    # Update CSV with everything found so far[cite: 5]
-                    os.makedirs('data', exist_ok=True)
-                    pd.DataFrame(all_extracted_data).to_csv('data/rawdata.csv', index=False)
-                    logger.info(f"💾 Page {page} secured. Total: {len(all_extracted_data)}")
-
-            time.sleep(random.uniform(30, 50))
+        time.sleep(random.uniform(30, 50))
 
     except Exception as e:
-        logger.error(f"❌ Error: {str(e)}")
+        logger.error(f"❌ Error during scraping: {str(e)}")
     finally:
         if driver: driver.quit()
 
 if __name__ == "__main__":
-    scrape_avito_real_estate()
+    # This is just a fallback if you run main.py directly instead of run_pipeline.py
+    run_scraper("Appartement", 5)
