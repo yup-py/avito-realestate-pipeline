@@ -22,4 +22,4 @@ CREATE TABLE IF NOT EXISTS staging.raw_annonces (
 );
 
 -- 3. Create an index on the link to make searching faster later
-CREATE INDEX IF NOT EXISTS idx_annonce_link ON staging.raw_annonces(link);
+CREATE INDEX IF NOT EXISTS idx_staging_link ON staging.raw_annonces(link);
