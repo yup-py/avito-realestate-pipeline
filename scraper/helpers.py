@@ -23,42 +23,48 @@ def get_driver():
     })
     return driver
 
-def extract_listing_data(card_text, href, category_name):
-    lines = [l.strip() for l in card_text.split('\n') if l.strip()]
+# Add 'card_snippet' as a new parameter
+def extract_listing_data(page_text, href, category_name, card_snippet):
+    # --- 1. DATA FROM THE CARD (More reliable for Price/City) ---[cite: 11]
+    card_lines = [l.strip() for l in card_snippet.split('\n') if l.strip()]
     
-    # 1. Improved City Extraction: Extract only the part after "dans "
-    # Example: "Maisons dans Tanger, Ahlane" -> "Tanger, Ahlane"
+    # Precise Price from Card
+    price_match = re.search(r'([\d\s]+)\s*DH', card_snippet, re.IGNORECASE)
+    price_val = price_match.group(1).replace(" ", "").strip() if price_match else "N/A"
+    
+    # Precise City from Card[cite: 11]
     city = "N/A"
-    city_match = re.search(r'dans\s+(.*)', card_text)
+    city_match = re.search(r'dans\s+(.*)', card_snippet)
     if city_match:
         city = city_match.group(1).strip()
-    elif lines:
-        # Fallback to the old method if Regex fails
-        city = next((l for l in lines if "dans " in l), "N/A")
+    elif card_lines:
+        city = next((l for l in card_lines if "dans " in l), "N/A")
 
-    # 2. Flexible Bathroom Pattern: Catches "sdb", "sdbs", "salle de bain"
-    # Added 're.IGNORECASE' to catch 'Sdb' or 'SDB'
-    bathrooms = "N/A"
-    bath_match = re.search(r'(\d+)\s*(?:sdb|sdbs|salle[s]?\s*de\s*bain)', card_text, re.IGNORECASE)
-    if bath_match:
-        bathrooms = bath_match.group(1)
-
-    # 3. Surface, Rooms, Floor, and Year (Standardized)
-    surface = re.search(r'(\d+)\s*m²', card_text)
-    rooms = re.search(r'(\d+)\s*chambre', card_text, re.IGNORECASE)
-    floor = re.search(r'(\d+)(?:er|ème)\s*étage', card_text, re.IGNORECASE)
-    year = re.search(r'(19|20)\d{2}', card_text)
+    # --- 2. DATA FROM THE FULL PAGE (Technical details) ---[cite: 11]
+    surface = re.search(r'(\d+)\s*m²', page_text)
+    rooms = re.search(r'(\d+)\s*chambre', page_text, re.IGNORECASE)
+    bath_match = re.search(r'(\d+)\s*(?:sdb|sdbs|salle[s]?\s*de\s*bain)', page_text, re.IGNORECASE)
+    floor = re.search(r'(\d+)\s*(?:[Ée]tage|Nombre d[’\']étage)', page_text, re.IGNORECASE)
+    
+    # Build Year logic from expanded page[cite: 11]
+    age_match = re.search(r'([^\n]+)\n\s*Âge du bien', page_text, re.IGNORECASE)
+    year_val = "N/A"
+    if age_match:
+        age_text = age_match.group(1).strip()
+        mapping = {"Moins de 1 an": "2026", "1-5": "2023", "5-10": "2018", "10-20": "2011", "Plus de 20": "2000"}
+        for key, val in mapping.items():
+            if key in age_text: year_val = val; break
 
     return {
         "category": category_name,
-        "title": lines[0] if lines else "N/A",
-        "price": next((l for l in lines if "DH" in l), "N/A"),
+        "title": card_lines[0] if card_lines else "N/A",
+        "price": price_val,
         "city": city,
         "surface": surface.group(1) if surface else "N/A",
         "rooms": rooms.group(1) if rooms else "N/A",
-        "bathrooms": bathrooms,
+        "bathrooms": bath_match.group(1) if bath_match else "N/A",
         "floor": floor.group(1) if floor else "N/A",
-        "build_year": year.group(0) if year else "N/A",
+        "build_year": year_val,
         "link": href,
-        "details": card_text
+        "details": page_text
     }
