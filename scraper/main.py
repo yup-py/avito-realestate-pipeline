@@ -60,37 +60,15 @@ def run_scraper(target_category, pages_per_category=10):
             for card in cards:
                 try:
                     href = card.get_attribute("href")
-                    card_snippet = card.text  # Keep the clean card text for price/city[cite: 12]
+                    # We only extract from the card text now
+                    card_text = card.text 
                     
-                    driver.execute_script("window.open(arguments[0]);", href)
-                    driver.switch_to.window(driver.window_handles[1])
-                    
-                    try:
-                        voir_plus = WebDriverWait(driver, 5).until(
-                            EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Voir plus')]"))
-                        )
-                        driver.execute_script("arguments[0].scrollIntoView();", voir_plus)
-                        voir_plus.click()
-                        time.sleep(0.5) 
-                    except:
-                        pass 
-
-                    full_listing_text = driver.find_element(By.TAG_NAME, 'body').text
-                    
-                    # Pass BOTH texts to the helper
-                    entry = extract_listing_data(full_listing_text, href, target_category, card_snippet)
-                    
+                    entry = extract_listing_data(card_text, href, target_category)
                     page_data.append(entry)
                     all_extracted_data.append(entry)
-                    
-                    driver.close()
-                    driver.switch_to.window(driver.window_handles[0])
-                    time.sleep(random.uniform(1.5, 3.0))
 
                 except Exception as e:
-                    if len(driver.window_handles) > 1:
-                        driver.close()
-                        driver.switch_to.window(driver.window_handles[0])
+                    logger.warning(f"Skipping a card due to error: {e}")
                     continue
 
             # --- BUILD-UP SAVE ---
