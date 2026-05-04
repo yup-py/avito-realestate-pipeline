@@ -89,6 +89,9 @@ def main():
         # Step 4: Export to CSV
         export_clean_data()
         
+        #logger.info("Step 5: Purging Staging Area...")
+        #run_sql("purge_staging.sql")
+
         logger.info("✅ Pipeline Execution Successful!")
     except Exception as e:
         logger.error(f"❌ Pipeline Failed: {e}")
