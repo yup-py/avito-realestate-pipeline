@@ -18,11 +18,14 @@ CREATE TABLE IF NOT EXISTS clean.annonces (
 
 -- 2. Clean, Calculate IQR, and Insert in one flow
 WITH parsed_data AS (
-    -- Step A: Parse strings into numbers just ONCE
+    -- Step A: Parse strings into numbers and SCRUB PII[cite: 6, 11, 15]
     SELECT 
         link,
         category,
-        TRIM(title) AS title_clean,
+        -- Combined PII scrubbing here!
+        REGEXP_REPLACE(TRIM(title), '\d{10}', '[PHONE_REDACTED]', 'g') AS title_clean,
+        
+        -- Keep your existing numeric parsing[cite: 6, 15]
         NULLIF(regexp_replace(price, '[^0-9]', '', 'g'), '')::NUMERIC AS price_val,
         SPLIT_PART(city, ',', 1) AS city_clean,
         NULLIF(surface, 'N/A')::INTEGER AS surf_val,
