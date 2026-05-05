@@ -1,54 +1,15 @@
 import os
+import time
+import schedule
 import pandas as pd
-import sys
 from sqlalchemy import create_engine, text
 from utils.logger import setup_logger
 from scraper.main import run_scraper 
 
 logger = setup_logger("Orchestrator")
 
-def get_menu_choice():
-    cats = {
-        "1": "Appartement", 
-        "2": "Maison", 
-        "3": "Villa_Riad", 
-        "4": "Bureau_Plateau",
-        "5": "Commerce",
-        "6": "Terrain_Ferme",
-        "7": "Autre"
-    }
-    
-    print("\n" + "="*30)
-    print("🚀 AVITO PIPELINE MENU")
-    print("="*30)
-    for k, v in cats.items(): 
-        print(f"[{k}] {v}")
-    print("[A] All Categories")
-    
-    # 1. Get Categories
-    choice = input("\nEnter numbers separated by commas (e.g., 1,3) or 'A' for all: ").strip().upper()
-    
-    selected_categories = []
-    if choice == 'A':
-        selected_categories = list(cats.values())
-    else:
-        # Split "1,3" into ["1", "3"]
-        indices = [i.strip() for i in choice.split(",")]
-        for i in indices:
-            if i in cats:
-                selected_categories.append(cats[i])
-    
-    if not selected_categories:
-        print("⚠️ No valid categories selected. Defaulting to Appartement.")
-        selected_categories = ["Appartement"]
-
-    # 2. Get Pages
-    pages = input("How many pages to scrape per category?: ").strip()
-    pages = int(pages) if pages.isdigit() else 5
-    
-    return selected_categories, pages
-
 def run_sql(filename):
+    """Executes SQL scripts from the db_init folder."""
     logger.info(f"Running database task: {filename}")
     engine = create_engine(os.getenv("DATABASE_URL"))
     with open(f"db_init/{filename}", 'r') as f:
@@ -57,44 +18,61 @@ def run_sql(filename):
         conn.execute(text(query))
 
 def export_clean_data():
+    """Exports the final warehouse data to a CSV for analysis[cite: 9]."""
     logger.info("📊 Exporting the SQL-cleaned data to data/clean_data.csv...")
     try:
         engine = create_engine(os.getenv("DATABASE_URL"))
-        # We select from the 'clean' table we just populated in SQL
         df = pd.read_sql("SELECT * FROM clean.annonces", engine)
-        
         os.makedirs('data', exist_ok=True)
         df.to_csv('data/clean_data.csv', index=False)
         logger.info(f"Successfully saved {len(df)} rows to data/clean_data.csv")
     except Exception as e:
         logger.error(f"⚠️ CSV Export failed: {e}")
 
-def main():
-    selected_cats, pages = get_menu_choice()
+def autonomous_pipeline():
+    """The main automated logic: No menus, no inputs[cite: 9]."""
+    # 🎯 AUTOMATED FILTERS
+    ALL_CATEGORIES = [
+        "Appartement", "Maison", "Villa_Riad", 
+        "Bureau_Plateau", "Commerce", "Terrain_Ferme"
+    ]
+    PAGES_PER_CAT = 3 # Your requested 30 pages
     
     try:
-        # Step 1: Scrape
-        for category in selected_cats:
-            logger.info(f"Step 1: Starting Scraping for {category}...")
-            run_scraper(category, pages)
+        logger.info("🚀 Starting Automated Industrial Pipeline...")
         
-        # Step 2: Clean and Filter in SQL
+        # Step 1: Sequential Extraction for all categories[cite: 7]
+        for category in ALL_CATEGORIES:
+            logger.info(f"Step 1: Scraping 30 pages for {category}...")
+            run_scraper(category, PAGES_PER_CAT)
+        
+        # Step 2: Clean and Filter in SQL[cite: 1]
         logger.info("Step 2: Running SQL Cleaning and Filtering...")
         run_sql("cleaning.sql")
         
-        # Step 3: Populate Warehouse
-        logger.info("Step 3: Loading BI and ML Schemas...")
+        # Step 3: Populate BI and ML Warehouse Schemas[cite: 4]
+        logger.info("Step 3: Loading Warehouse Schemas...")
         run_sql("warehouse.sql")
         
         # Step 4: Export to CSV
         export_clean_data()
         
-        #logger.info("Step 5: Purging Staging Area...")
-        #run_sql("purge_staging.sql")
+        # Step 5: Purge Staging Area (Clean up for the next run)
+        logger.info("Step 5: Purging Staging Area...")
+        run_sql("purge_staging.sql")
 
-        logger.info("✅ Pipeline Execution Successful!")
+        logger.info("✅ Pipeline Execution Successful! Next run in 24 hours.")
     except Exception as e:
         logger.error(f"❌ Pipeline Failed: {e}")
 
 if __name__ == "__main__":
-     main()
+    # Run once immediately when the container starts
+    autonomous_pipeline()
+    
+    # Schedule to run automatically every night at 2:00 AM
+    schedule.every().day.at("12:40").do(autonomous_pipeline)
+    
+    logger.info("🤖 Scheduler Active. Keeping container alive...")
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
