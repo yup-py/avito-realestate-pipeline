@@ -9,19 +9,24 @@ from scraper.main import run_scraper
 logger = setup_logger("Orchestrator")
 
 def run_sql(filename):
-    """Executes SQL scripts from the db_init folder."""
     logger.info(f"Running database task: {filename}")
     engine = create_engine(os.getenv("DATABASE_URL"))
     with open(f"db_init/{filename}", 'r') as f:
         query = f.read()
-    with engine.begin() as conn:
-        conn.execute(text(query))
+    try:
+        with engine.begin() as conn:
+            # Use text(query) to wrap the string safely
+            conn.execute(text(query)) 
+    except Exception as e:
+        logger.error(f"❌ SQL Error in {filename}: {str(e).split('[SQL:')[0]}")
+        raise e
 
 def export_clean_data():
-    """Exports the final warehouse data to a CSV for analysis[cite: 9]."""
+    """Exports the final warehouse data to a CSV for analysis."""
     logger.info("📊 Exporting the SQL-cleaned data to data/clean_data.csv...")
     try:
         engine = create_engine(os.getenv("DATABASE_URL"))
+        # Reads from the 'clean' schema defined in your SQL files[cite: 17]
         df = pd.read_sql("SELECT * FROM clean.annonces", engine)
         os.makedirs('data', exist_ok=True)
         df.to_csv('data/clean_data.csv', index=False)
@@ -30,47 +35,53 @@ def export_clean_data():
         logger.error(f"⚠️ CSV Export failed: {e}")
 
 def autonomous_pipeline():
-    """The main automated logic: No menus, no inputs[cite: 9]."""
-    # 🎯 AUTOMATED FILTERS
+    """The main automated logic synchronized with your file names."""
     ALL_CATEGORIES = [
-        "Appartement", "Maison", "Villa_Riad", 
-        "Bureau_Plateau", "Commerce", "Terrain_Ferme"
+        "Appartement", "Maison"
     ]
-    PAGES_PER_CAT = 3 # Your requested 30 pages
+    PAGES_PER_CAT = 10
     
     try:
         logger.info("🚀 Starting Automated Industrial Pipeline...")
         
-        # Step 1: Sequential Extraction for all categories[cite: 7]
+        # Step 0: Initialize Schemas and Tables
+        # Filename corrected to match your 'db_init/init.sql'
+        logger.info("Step 0: Initializing Database...")
+        run_sql("init.sql") 
+        
+        # Step 1: Sequential Extraction[cite: 15]
         for category in ALL_CATEGORIES:
-            logger.info(f"Step 1: Scraping 30 pages for {category}...")
+            logger.info(f"Step 1: Scraping {PAGES_PER_CAT} pages for {category}...")
             run_scraper(category, PAGES_PER_CAT)
         
-        # Step 2: Clean and Filter in SQL[cite: 1]
-        logger.info("Step 2: Running SQL Cleaning and Filtering...")
+        # Step 2: Clean and Filter in SQL[cite: 17]
+        # Filename corrected to match your 'db_init/cleaning.sql'
+        logger.info("Step 2: Running SQL Cleaning...")
         run_sql("cleaning.sql")
         
-        # Step 3: Populate BI and ML Warehouse Schemas[cite: 4]
-        logger.info("Step 3: Loading Warehouse Schemas...")
+        # Step 3: Populate Warehouse Schemas[cite: 10]
+        # Filename corrected to match your 'db_init/warehouse.sql'
+        logger.info("Step 3: Loading Warehouse...")
         run_sql("warehouse.sql")
         
         # Step 4: Export to CSV
         export_clean_data()
         
-        # Step 5: Purge Staging Area (Clean up for the next run)
+        # Step 5: Purge Staging Area[cite: 9]
+        # Filename corrected to match your 'db_init/purge_staging.sql'
         logger.info("Step 5: Purging Staging Area...")
         run_sql("purge_staging.sql")
 
-        logger.info("✅ Pipeline Execution Successful! Next run in 24 hours.")
+        logger.info("✅ Pipeline Execution Successful!")
     except Exception as e:
         logger.error(f"❌ Pipeline Failed: {e}")
 
 if __name__ == "__main__":
-    # Run once immediately when the container starts
+    # Execute immediately on start
     autonomous_pipeline()
     
-    # Schedule to run automatically every night at 2:00 AM
-    schedule.every().day.at("12:40").do(autonomous_pipeline)
+    # Schedule for daily execution at 02:12 AM
+    schedule.every().day.at("02:12").do(autonomous_pipeline)
     
     logger.info("🤖 Scheduler Active. Keeping container alive...")
     while True:
