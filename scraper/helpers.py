@@ -44,6 +44,10 @@ def extract_listing_data(card_text, href, category_name):
     # Note: Floor and Age will mostly be 'N/A' in this mode[cite: 1, 2]
     floor = re.search(r'(\d+)\s*[Ée]tage', card_text, re.IGNORECASE)
     
+    # Avito cards usually have the date at the very end of the text block
+    lines = [l.strip() for l in card_text.split('\n') if l.strip()]
+    date_raw = lines[-1] if lines else "N/A"
+    
     return {
         "category": category_name,
         "title": lines[0] if lines else "N/A",
@@ -55,5 +59,6 @@ def extract_listing_data(card_text, href, category_name):
         "floor": floor.group(1) if floor else "N/A",
         "build_year": "N/A", # Hard to find on search cards[cite: 1]
         "link": href,
+        "date_posted": date_raw,
         "details": card_text
     }
