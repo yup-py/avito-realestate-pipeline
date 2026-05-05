@@ -15,6 +15,7 @@ services:
   pipeline:
     build: .
     container_name: avito-realestate
+    restart: always
     tty: true
     stdin_open: true
     depends_on:
@@ -23,6 +24,17 @@ services:
       - .:/app
     environment:
       - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+    command: python run_pipeline.py
 
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin_container
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8080:80"
+    depends_on:
+      - db
 volumes:
   postgres_data:
