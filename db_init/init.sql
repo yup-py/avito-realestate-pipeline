@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS staging.raw_annonces (
     floor TEXT,
     build_year TEXT,
     link TEXT,
-    details TEXT,          -- Stores the full raw text for analysis
+    date_posted TEXT,
+    details TEXT,          
     scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

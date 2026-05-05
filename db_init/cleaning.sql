@@ -12,20 +12,30 @@ CREATE TABLE IF NOT EXISTS clean.annonces (
     floor INTEGER,
     property_age_years INTEGER,
     price_per_m2 NUMERIC, 
+    announcement_date DATE, 
     link TEXT UNIQUE,
     cleaned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 2. Clean, Calculate IQR, and Insert in one flow
 WITH parsed_data AS (
-    -- Step A: Parse strings into numbers and SCRUB PII[cite: 6, 11, 15]
     SELECT 
         link,
         category,
-        -- Combined PII scrubbing here!
         REGEXP_REPLACE(TRIM(title), '\d{10}', '[PHONE_REDACTED]', 'g') AS title_clean,
-        
-        -- Keep your existing numeric parsing[cite: 6, 15]
+
+        CASE 
+            WHEN date_posted ILIKE '%%minute%%' OR date_posted ILIKE '%%heure%%' THEN CURRENT_DATE
+            WHEN date_posted ILIKE '%%jour%%' THEN 
+                CURRENT_DATE - (NULLIF(regexp_replace(date_posted, '[^0-9]', '', 'g'), '')::INT * INTERVAL '1 day')
+            WHEN date_posted ILIKE '%%mois%%' THEN 
+                CURRENT_DATE - (NULLIF(regexp_replace(date_posted, '[^0-9]', '', 'g'), '')::INT * INTERVAL '1 month')
+            WHEN date_posted ~ '^\d{1,2} [[:alpha:]]+' THEN 
+                TO_DATE(date_posted || ' ' || EXTRACT(YEAR FROM CURRENT_DATE), 'DD Month YYYY')
+                
+            ELSE CURRENT_DATE
+        END AS date_val,
+
         NULLIF(regexp_replace(price, '[^0-9]', '', 'g'), '')::NUMERIC AS price_val,
         SPLIT_PART(city, ',', 1) AS city_clean,
         NULLIF(surface, 'N/A')::INTEGER AS surf_val,
@@ -36,7 +46,6 @@ WITH parsed_data AS (
     FROM staging.raw_annonces
 ),
 stats AS (
-    -- Step B: Calculate Q1 and Q3 for prices per category (ignoring rentals < 100,000 DH)
     SELECT 
         category,
         percentile_cont(0.25) WITHIN GROUP (ORDER BY price_val) as q1,
@@ -46,16 +55,15 @@ stats AS (
     GROUP BY category
 ),
 fences AS (
-    -- Step C: Calculate the IQR Bounds (1.5 multiplier)
     SELECT 
         category,
         (q1 - 1.5 * (q3 - q1)) as lower_bound,
         (q3 + 1.5 * (q3 - q1)) as upper_bound
     FROM stats
 )
--- Step D: Insert the filtered data into the final table
 INSERT INTO clean.annonces (
-    category, title, price_dh, city, surface_m2, rooms, bathrooms, floor, property_age_years, price_per_m2, link
+    category, title, price_dh, city, surface_m2, rooms, bathrooms, 
+    floor, property_age_years, price_per_m2, announcement_date, link
 )
 SELECT 
     p.category, 
@@ -68,19 +76,19 @@ SELECT
     p.floor_val, 
     p.age_val,
     (p.price_val / p.surf_val) AS price_per_m2,
+    p.date_val,
     p.link
 FROM parsed_data p
 JOIN fences f ON p.category = f.category
 WHERE 
-    -- 1. Must have valid price and surface to do math
+    -- 1. Must have valid price, surface, AND DATE to proceed
     p.price_val IS NOT NULL 
     AND p.surf_val IS NOT NULL 
     AND p.surf_val > 0
-    
+    AND p.date_val IS NOT NULL
     -- 2. Hard Floor: Filter out monthly rentals
     AND p.price_val > 100000 
-    
-    -- 3. IQR Anomaly Filter: Price must be inside the "normal" bounds for its category
+    -- 3. IQR Anomaly Filter
     AND p.price_val BETWEEN f.lower_bound AND f.upper_bound
     
     -- 4. Category-Specific Surface Safety Nets
@@ -97,8 +105,9 @@ ON CONFLICT (link) DO NOTHING;
 SELECT 
     category, 
     COUNT(*) as clean_listings_kept,
-    ROUND(AVG(price_dh), 0) as avg_price,
-    ROUND(AVG(price_per_m2), 0) as avg_price_per_m2
+    MIN(announcement_date) as oldest_ad,
+    MAX(announcement_date) as newest_ad,
+    ROUND(AVG(price_per_m2), 0) as avg_price_m2
 FROM clean.annonces 
 GROUP BY category
 ORDER BY clean_listings_kept DESC;

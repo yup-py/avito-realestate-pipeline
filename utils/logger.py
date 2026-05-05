@@ -18,7 +18,7 @@ def setup_logger(name):
         file_handler = logging.FileHandler(os.path.join(log_dir, "pipeline.log"))
         file_handler.setFormatter(formatter)
 
-        # Console Handler (for your terminal)
+        # Console Handler (for terminal)
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(formatter)
 
