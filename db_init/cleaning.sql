@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS clean.annonces (
     title TEXT,
     price_dh NUMERIC,
     city TEXT,
-    district TEXT,
+    district TEXT, --
     surface_m2 INTEGER,
     rooms INTEGER,
     bathrooms INTEGER,
@@ -22,8 +22,10 @@ WITH parsed_data AS (
     SELECT 
         link,
         category,
+        -- Keep title clean by removing phone numbers
         REGEXP_REPLACE(TRIM(title), '\d{10}', '[PHONE_REDACTED]', 'g') AS title_clean,
 
+        -- Handle dynamic date strings
         CASE 
             WHEN date_posted ILIKE '%%minute%%' OR date_posted ILIKE '%%heure%%' THEN CURRENT_DATE
             WHEN date_posted ILIKE '%%jour%%' THEN 
@@ -32,12 +34,12 @@ WITH parsed_data AS (
                 CURRENT_DATE - (NULLIF(regexp_replace(date_posted, '[^0-9]', '', 'g'), '')::INT * INTERVAL '1 month')
             WHEN date_posted ~ '^\d{1,2} [[:alpha:]]+' THEN 
                 TO_DATE(date_posted || ' ' || EXTRACT(YEAR FROM CURRENT_DATE), 'DD Month YYYY')
-                
             ELSE CURRENT_DATE
         END AS date_val,
 
         NULLIF(regexp_replace(price, '[^0-9]', '', 'g'), '')::NUMERIC AS price_val,
-        SPLIT_PART(city, ',', 1) AS city_clean,
+        city AS city_clean,
+        district AS district_clean, -- Added: Directly from staging
         NULLIF(surface, 'N/A')::INTEGER AS surf_val,
         NULLIF(rooms, 'N/A')::INTEGER AS rooms_val,
         NULLIF(bathrooms, 'N/A')::INTEGER AS bath_val,
@@ -62,7 +64,7 @@ fences AS (
     FROM stats
 )
 INSERT INTO clean.annonces (
-    category, title, price_dh, city, surface_m2, rooms, bathrooms, 
+    category, title, price_dh, city, district, surface_m2, rooms, bathrooms, 
     floor, property_age_years, price_per_m2, announcement_date, link
 )
 SELECT 
@@ -70,6 +72,7 @@ SELECT
     p.title_clean, 
     p.price_val, 
     p.city_clean, 
+    p.district_clean, -- Added to the insert[cite: 4]
     p.surf_val, 
     p.rooms_val, 
     p.bath_val, 
@@ -81,17 +84,16 @@ SELECT
 FROM parsed_data p
 JOIN fences f ON p.category = f.category
 WHERE 
-    -- 1. Must have valid price, surface, AND DATE to proceed
+    -- 1. Validity Check
     p.price_val IS NOT NULL 
     AND p.surf_val IS NOT NULL 
     AND p.surf_val > 0
     AND p.date_val IS NOT NULL
-    -- 2. Hard Floor: Filter out monthly rentals
+    -- 2. Price Floor
     AND p.price_val > 100000 
-    -- 3. IQR Anomaly Filter
+    -- 3. Anomaly Filtering
     AND p.price_val BETWEEN f.lower_bound AND f.upper_bound
-    
-    -- 4. Category-Specific Surface Safety Nets
+    -- 4. Category-Specific Logic[cite: 4]
     AND CASE 
         WHEN p.category = 'Appartement' THEN p.surf_val BETWEEN 20 AND 1000
         WHEN p.category = 'Villa_Riad' THEN p.surf_val > 80
@@ -101,13 +103,12 @@ WHERE
     END
 ON CONFLICT (link) DO NOTHING;
 
--- 3. LOGGING FEATURE: See what survived!
+-- 3. LOGGING
 SELECT 
-    category, 
-    COUNT(*) as clean_listings_kept,
-    MIN(announcement_date) as oldest_ad,
-    MAX(announcement_date) as newest_ad,
+    city,
+    district,
+    COUNT(*) as listings_count,
     ROUND(AVG(price_per_m2), 0) as avg_price_m2
 FROM clean.annonces 
-GROUP BY category
-ORDER BY clean_listings_kept DESC;
+GROUP BY city, district
+ORDER BY listings_count DESC;

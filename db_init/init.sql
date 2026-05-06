@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS staging.raw_annonces (
     title TEXT,
     price TEXT,
     city TEXT,
+    district TEXT,
     surface TEXT,
     rooms TEXT,
     bathrooms TEXT,

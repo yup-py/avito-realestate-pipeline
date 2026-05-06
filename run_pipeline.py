@@ -37,9 +37,9 @@ def export_clean_data():
 def autonomous_pipeline():
     """The main automated logic synchronized with your file names."""
     ALL_CATEGORIES = [
-        "Appartement", "Maison"
+        "Appartement", "Villa_Riad", "Maison", "Bureau_Plateau", "Commerce", "Terrain_Ferme"
     ]
-    PAGES_PER_CAT = 10
+    PAGES_PER_CAT = 25
     
     try:
         logger.info("🚀 Starting Automated Industrial Pipeline...")
