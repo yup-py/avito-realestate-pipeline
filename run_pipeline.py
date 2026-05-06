@@ -35,11 +35,11 @@ def export_clean_data():
         logger.error(f"⚠️ CSV Export failed: {e}")
 
 def autonomous_pipeline():
-    """The main automated logic synchronized with your file names."""
+    """The main automated logic"""
     ALL_CATEGORIES = [
         "Appartement", "Villa_Riad", "Maison", "Bureau_Plateau", "Commerce", "Terrain_Ferme"
     ]
-    PAGES_PER_CAT = 25
+    PAGES_PER_CAT = 50
     
     try:
         logger.info("🚀 Starting Automated Industrial Pipeline...")
@@ -49,26 +49,23 @@ def autonomous_pipeline():
         logger.info("Step 0: Initializing Database...")
         run_sql("init.sql") 
         
-        # Step 1: Sequential Extraction[cite: 15]
+        # Step 1: Sequential Extraction
         for category in ALL_CATEGORIES:
             logger.info(f"Step 1: Scraping {PAGES_PER_CAT} pages for {category}...")
             run_scraper(category, PAGES_PER_CAT)
         
-        # Step 2: Clean and Filter in SQL[cite: 17]
-        # Filename corrected to match your 'db_init/cleaning.sql'
+        # Step 2: Clean and Filter in SQL
         logger.info("Step 2: Running SQL Cleaning...")
         run_sql("cleaning.sql")
         
-        # Step 3: Populate Warehouse Schemas[cite: 10]
-        # Filename corrected to match your 'db_init/warehouse.sql'
+        # Step 3: Populate Warehouse Schemas
         logger.info("Step 3: Loading Warehouse...")
         run_sql("warehouse.sql")
         
         # Step 4: Export to CSV
         export_clean_data()
         
-        # Step 5: Purge Staging Area[cite: 9]
-        # Filename corrected to match your 'db_init/purge_staging.sql'
+        # Step 5: Purge Staging Area
         logger.info("Step 5: Purging Staging Area...")
         run_sql("purge_staging.sql")
 

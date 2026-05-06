@@ -70,7 +70,7 @@ def run_scraper(target_category, pages_per_category=10):
 
                     raw_text = card.text
                     
-                    # 🎯 Targeted date fix: Look for the 'il y a' pattern inside the card
+                    # Targeted date fix: Look for the 'il y a' pattern inside the card
                     # We use a try/except because not every card might have a visible date
                     try:
                         # Find any element inside the card that mentions time

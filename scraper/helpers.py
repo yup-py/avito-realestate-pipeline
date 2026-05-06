@@ -23,41 +23,43 @@ def get_driver():
     })
     return driver
 
-# Add 'card_snippet' as a new parameter
 def extract_listing_data(card_text, href, category_name):
     lines = [l.strip() for l in card_text.split('\n') if l.strip()]
     
-    # Price and City from Card[cite: 11]
+    # 1. SIMPLE TITLE: Use the first line but remove common patterns like "155m²" or "3 ch"
+    raw_title = lines[0] if lines else "N/A"
+    simple_title = re.sub(r'\d+\s*(?:m²|ch|sdb|étage).*', '', raw_title, flags=re.IGNORECASE).strip()
+    
+    # 2. PRICE
     price_match = re.search(r'([\d\s]+)\s*DH', card_text, re.IGNORECASE)
     price_val = price_match.group(1).replace(" ", "").strip() if price_match else "N/A"
     
-    city = "N/A"
-    city_match = re.search(r'dans\s+(.*)', card_text)
-    if city_match:
-        city = city_match.group(1).strip()
+    # 3. CITY & DISTRICT: Split "dans City, District"
+    city, district = "N/A", "N/A"
+    loc_match = re.search(r'dans\s+([^,\n]+)(?:,\s*([^,\n]+))?', card_text)
+    if loc_match:
+        city = loc_match.group(1).strip()
+        district = loc_match.group(2).strip() if loc_match.group(2) else "Autre secteur"
     
-    # Technical specs (Best effort from snippet)[cite: 11]
+    # 4. TECHNICAL SPECS
     surface = re.search(r'(\d+)\s*m²', card_text)
     rooms = re.search(r'(\d+)\s*chambre', card_text, re.IGNORECASE)
     bath_match = re.search(r'(\d+)\s*(?:sdb|sdbs|salle[s]?\s*de\s*bain)', card_text, re.IGNORECASE)
-    
-    # Note: Floor and Age will mostly be 'N/A' in this mode[cite: 1, 2]
     floor = re.search(r'(\d+)\s*[Ée]tage', card_text, re.IGNORECASE)
     
-    # Avito cards usually have the date at the very end of the text block
-    lines = [l.strip() for l in card_text.split('\n') if l.strip()]
     date_raw = lines[-1] if lines else "N/A"
     
     return {
         "category": category_name,
-        "title": lines[0] if lines else "N/A",
+        "title": simple_title,
         "price": price_val,
         "city": city,
+        "district": district,
         "surface": surface.group(1) if surface else "N/A",
         "rooms": rooms.group(1) if rooms else "N/A",
         "bathrooms": bath_match.group(1) if bath_match else "N/A",
         "floor": floor.group(1) if floor else "N/A",
-        "build_year": "N/A", # Hard to find on search cards[cite: 1]
+        "build_year": "N/A", 
         "link": href,
         "date_posted": date_raw,
         "details": card_text

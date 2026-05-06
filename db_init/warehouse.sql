@@ -88,7 +88,7 @@ SELECT
     category, 
     price_dh, 
     city, 
-    COALESCE(district, 'Unknown'), -- Ensure no NULLs in ML dataset[cite: 11]
+    COALESCE(district, 'Unknown'),
     surface_m2, 
     rooms, 
     bathrooms, 

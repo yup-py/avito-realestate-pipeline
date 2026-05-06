@@ -39,7 +39,7 @@ WITH parsed_data AS (
 
         NULLIF(regexp_replace(price, '[^0-9]', '', 'g'), '')::NUMERIC AS price_val,
         city AS city_clean,
-        district AS district_clean, -- Added: Directly from staging
+        district AS district_clean,
         NULLIF(surface, 'N/A')::INTEGER AS surf_val,
         NULLIF(rooms, 'N/A')::INTEGER AS rooms_val,
         NULLIF(bathrooms, 'N/A')::INTEGER AS bath_val,
@@ -72,7 +72,7 @@ SELECT
     p.title_clean, 
     p.price_val, 
     p.city_clean, 
-    p.district_clean, -- Added to the insert[cite: 4]
+    p.district_clean,
     p.surf_val, 
     p.rooms_val, 
     p.bath_val, 
@@ -93,7 +93,7 @@ WHERE
     AND p.price_val > 100000 
     -- 3. Anomaly Filtering
     AND p.price_val BETWEEN f.lower_bound AND f.upper_bound
-    -- 4. Category-Specific Logic[cite: 4]
+    -- 4. Category-Specific Logic
     AND CASE 
         WHEN p.category = 'Appartement' THEN p.surf_val BETWEEN 20 AND 1000
         WHEN p.category = 'Villa_Riad' THEN p.surf_val > 80
